@@ -61,11 +61,47 @@ with tab1:
                             col_img, col_info = st.columns([1, 2])
                             
                             with col_img:
-                                # Muestra la miniatura del video
                                 thumb_url = v['snippet']['thumbnails']['high']['url']
                                 st.image(thumb_url, use_container_width=True)
                             
                             with col_info:
                                 st.subheader(v['snippet']['title'])
                                 st.write(f"📺 **Canal:** {v['snippet']['channelTitle']}")
-                                st.write(f"📈 **Ratio:** {round(vistas/subs, 1)}x  |  👁️ **Vistas
+                                # Línea corregida aquí:
+                                st.write(f"📈 **Ratio:** {round(vistas/subs, 1)}x  |  👁️ **Vistas:** {vistas:,}")
+                                st.link_button("🎥 Ver en YouTube", f"https://youtube.com/watch?v={v['id']}")
+                                
+                                # Botón de guardado
+                                btn_id = f"save_{v['id']}"
+                                if st.button(f"📥 Guardar Hallazgo", key=btn_id):
+                                    nuevo_oro = pd.DataFrame([{
+                                        "Fecha": datetime.now().strftime("%Y-%m-%d"),
+                                        "Miniatura": thumb_url,
+                                        "Título": v['snippet']['title'],
+                                        "Canal": v['snippet']['channelTitle'],
+                                        "Vistas": vistas,
+                                        "Ratio": f"{round(vistas/subs, 1)}x",
+                                        "Link": f"https://youtube.com/watch?v={v['id']}"
+                                    }])
+                                    st.session_state['database'] = pd.concat([st.session_state['database'], nuevo_oro]).drop_duplicates(subset=['Link'])
+                                    st.toast("¡Guardado en la biblioteca!")
+                            st.divider()
+            except Exception as e:
+                st.error(f"Error de sistema: {e}")
+
+with tab2:
+    st.header("📂 Tu Galería de Referencias")
+    if not st.session_state['database'].empty:
+        st.dataframe(
+            st.session_state['database'],
+            column_config={
+                "Miniatura": st.column_config.ImageColumn("Preview"),
+                "Link": st.column_config.LinkColumn("Enlace")
+            },
+            use_container_width=True,
+            hide_index=True
+        )
+        csv = st.session_state['database'].to_csv(index=False).encode('utf-8')
+        st.download_button("💾 Descargar CSV de Producción", csv, "biblioteca_velocity.csv", "text/csv")
+    else:
+        st.info("La biblioteca está vacía.")
