@@ -27,7 +27,7 @@ with st.sidebar:
     st.divider()
     min_views_req = st.number_input("👁️ Vistas Mínimas", value=30000)
     max_subs_req = st.number_input("📉 Máximo Suscriptores", value=400000)
-    st.info("Configuración optimizada para detección de canales Faceless.")
+    st.info("Sistema optimizado para canales Faceless de alto rendimiento.")
 
 # --- FUNCIONES TÉCNICAS ---
 def calcular_fecha(opcion):
@@ -36,7 +36,7 @@ def calcular_fecha(opcion):
     if opcion == "Siempre": return None
     return (ahora - timedelta(days=tiempos.get(opcion, 30))).strftime('%Y-%m-%dT%H:%M:%SZ')
 
-# --- DEFINICIÓN DE PESTAÑAS (CRÍTICO) ---
+# --- DEFINICIÓN DE PESTAÑAS ---
 tab1, tab2, tab3 = st.tabs(["🔍 Radar de Volumen", "📊 Analizador de Video", "🛡️ Auditor de Canal"])
 
 # --- PESTAÑA 1: RADAR ---
@@ -51,6 +51,7 @@ with tab1:
                 
                 encontrados = 0
                 for item in res.get('items', []):
+                    if 'videoId' not in item['id']: continue
                     v_id = item['id']['videoId']
                     v_res = youtube.videos().list(part='statistics,snippet', id=v_id).execute()
                     if not v_res['items']: continue
@@ -73,19 +74,57 @@ with tab1:
                             st.write(f"🆔 Video: `{v_id}` | 🆔 Canal: `{c_id}`")
                             st.link_button("🎥 Ver Video", f"https://youtube.com/watch?v={v_id}")
                         st.divider()
-                if encontrados == 0: st.warning("No hubo coincidencias. Ajusta los filtros.")
-            except Exception as e: st.error(f"Error: {e}")
+                if encontrados == 0: st.warning("No hubo coincidencias exactas. Prueba bajando las vistas mínimas.")
+            except Exception as e: st.error(f"Error en Radar: {e}")
 
 # --- PESTAÑA 2: ANALIZADOR ---
 with tab2:
     st.header("🔬 Inteligencia de Video")
-    v_input = st.text_input("ID o URL del Video")
-    if st.button("Analizar"):
-        try:
-            v_id_clean = v_input.split("v=")[-1] if "v=" in v_input else v_input
-            youtube = build('youtube', 'v3', developerKey=api_key)
-            v_det = youtube.videos().list(part='snippet,statistics', id=v_id_clean).execute()
-            if v_det['items']:
-                item = v_det['items'][0]
-                st.image(item['snippet']['thumbnails']['high']['url'], width=400)
-                st.write(f"**Etiquetas:** {',
+    v_input = st.text_input("ID o URL del Video", key="analizador_input")
+    if st.button("Analizar Video"):
+        if not api_key: st.error("Falta API KEY")
+        else:
+            try:
+                v_id_clean = v_input.split("v=")[-1] if "v=" in v_input else v_input
+                v_id_clean = v_id_clean.split("&")[0] # Limpiar parámetros extras
+                youtube = build('youtube', 'v3', developerKey=api_key)
+                v_det = youtube.videos().list(part='snippet,statistics', id=v_id_clean).execute()
+                if v_det['items']:
+                    item = v_det['items'][0]
+                    col_a, col_b = st.columns([1, 2])
+                    with col_a:
+                        st.image(item['snippet']['thumbnails']['high']['url'], use_container_width=True)
+                    with col_b:
+                        st.subheader(item['snippet']['title'])
+                        tags = item['snippet'].get('tags', [])
+                        st.write(f"**Etiquetas:** {', '.join(tags) if tags else 'Sin etiquetas'}")
+                        st.metric("Vistas Totales", f"{int(item['statistics'].get('viewCount', 0)):,}")
+                        st.write(f"📅 **Publicado:** {item['snippet']['publishedAt'][:10]}")
+                else: st.error("No se encontró el video. Verifica el ID.")
+            except Exception as e: st.error(f"Error en Analizador: {e}")
+
+# --- PESTAÑA 3: AUDITOR ---
+with tab3:
+    st.header("🛡️ Auditoría de Canal")
+    c_input = st.text_input("ID o URL del Canal (@usuario o UC...)", key="auditor_input")
+    if st.button("Auditar Canal"):
+        if not api_key: st.error("Falta API KEY")
+        else:
+            try:
+                youtube = build('youtube', 'v3', developerKey=api_key)
+                cid = c_input.split("/")[-1].replace("@", "")
+                
+                # Intentar por Handle (nombre con @) o por ID de canal (UC...)
+                if c_input.startswith("UC") or "channel/UC" in c_input:
+                    clean_id = c_input.split("/")[-1]
+                    c_res = youtube.channels().list(part='snippet,statistics', id=clean_id).execute()
+                else:
+                    c_res = youtube.channels().list(part='snippet,statistics', forHandle=cid).execute()
+                
+                if c_res.get('items'):
+                    det = c_res['items'][0]
+                    st.title(det['snippet']['title'])
+                    st.image(det['snippet']['thumbnails']['high']['url'], width=150)
+                    st.metric("Suscriptores", f"{int(det['statistics'].get('subscriberCount', 0)):,}")
+                    st.write(f"**Descripción:** {det['snippet']['description'][:400]}...")
+                else: st.error("Canal no encontrado. Intenta pegando el ID completo
