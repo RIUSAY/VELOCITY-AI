@@ -4,88 +4,72 @@ from googleapiclient.discovery import build
 from datetime import datetime, timedelta
 
 # 1. Configuración de Identidad
-st.set_page_config(page_title="VELOCITY AI - GLOBAL HUNTER", layout="wide")
-st.title("🚀 VELOCITY AI: Global Faceless Intelligence")
+st.set_page_config(page_title="VELOCITY AI - MASSIVE TRAFFIC", layout="wide")
+st.title("🚀 VELOCITY AI: Massive Global Traffic")
 
-# 2. Seguridad de API Key (Secrets)
+# 2. Seguridad de API Key
 try:
     api_key_default = st.secrets["YOUTUBE_API_KEY"]
 except:
     api_key_default = ""
 
-# --- BARRA LATERAL: FILTROS SOLICITADOS ---
+# --- BARRA LATERAL ---
 with st.sidebar:
-    st.header("⚙️ Ajustes de Cacería")
+    st.header("⚙️ Ajustes de Tráfico")
     api_key = st.text_input("API KEY", value=api_key_default, type="password")
     
     st.divider()
-    
-    # Filtro de Idioma
-    idioma = st.selectbox("🌎 Idioma del Video", ["Inglés (en)", "Español (es)"], index=0)
+    idioma = st.selectbox("🌎 Idioma", ["Inglés (en)", "Español (es)"], index=0)
     lang_code = "en" if "Inglés" in idioma else "es"
     
-    # Filtro de Fechas (Rango solicitado)
     rango_tiempo = st.selectbox(
-        "📅 Antigüedad del Video", 
+        "📅 Antigüedad", 
         ["1 año", "8 meses", "6 meses", "3 meses", "1 mes", "1 semana", "24 horas"],
         index=3
     )
     
-    # Filtros de Rendimiento
-    ratio_min = st.slider("🔥 Poder Viral Mínimo (Ratio)", 5, 100, 10)
-    max_subs = st.number_input("📉 Máximo de Suscriptores", value=250000)
-    min_views = st.number_input("👁️ Mínimo de Vistas", value=50000)
+    # Bajamos la exigencia del Ratio para que muestre MÁS resultados
+    ratio_min_req = st.slider("Poder Viral Mínimo (Flexible)", 1.0, 50.0, 2.0)
+    min_views_req = st.number_input("👁️ Vistas Mínimas (Prioridad)", value=100000)
+    max_subs_req = st.number_input("📉 Máximo Suscriptores", value=1000000)
 
-# --- LÓGICA DE FECHA ---
-def calcular_fecha_publicacion(opcion):
+def calcular_fecha(opcion):
     ahora = datetime.utcnow()
-    tiempos = {
-        "1 año": 365, "8 meses": 240, "6 meses": 180, 
-        "3 meses": 90, "1 mes": 30, "1 semana": 7, "24 horas": 1
-    }
-    dias = tiempos.get(opcion, 30)
-    return (ahora - timedelta(days=dias)).strftime('%Y-%m-%dT%H:%M:%SZ')
+    tiempos = {"1 año": 365, "8 meses": 240, "6 meses": 180, "3 meses": 90, "1 mes": 30, "1 semana": 7, "24 horas": 1}
+    return (ahora - timedelta(days=tiempos.get(opcion, 30))).strftime('%Y-%m-%dT%H:%M:%SZ')
 
 # --- PROCESO DE ESCANEO ---
-if st.button("📡 INICIAR BÚSQUEDA DE ALTO RENDIMIENTO"):
+if st.button("📡 LANZAR ESCANEO DE TRÁFICO MASIVO"):
     if not api_key:
-        st.error("⚠️ Falta API KEY.")
+        st.error("Falta API KEY.")
     else:
         try:
             youtube = build('youtube', 'v3', developerKey=api_key)
-            fecha_filtro = calcular_fecha_publicacion(rango_tiempo)
+            fecha_filtro = calcular_fecha(rango_tiempo)
             
-            # Buscamos videos (Filtro inicial: Idioma y Fecha)
+            # Buscamos los 50 videos con más vistas de ese idioma y periodo
             res = youtube.search().list(
                 part='snippet',
                 maxResults=50,
                 order='viewCount',
                 type='video',
                 relevanceLanguage=lang_code,
-                publishedAfter=fecha_filtro,
-                videoEmbeddable='true',
-                videoDefinition='high'
+                publishedAfter=fecha_filtro
             ).execute()
 
             v_ids = [i['id']['videoId'] for i in res['items'] if 'videoId' in i['id']]
             
             if not v_ids:
-                st.warning("No se encontraron videos en este rango. Prueba ampliar los filtros.")
+                st.warning("No se encontraron videos. Prueba un rango de tiempo más amplio.")
             else:
-                # Obtener estadísticas extendidas
                 v_data = youtube.videos().list(part='statistics,snippet', id=','.join(v_ids)).execute()['items']
                 c_ids = [v['snippet']['channelId'] for v in v_data]
-                c_data = youtube.channels().list(part='statistics', id=','.join(c_ids)).execute()['items']
-                c_stats = {c['id']: c for c in c_data}
+                c_stats = {c['id']: c for c in youtube.channels().list(part='statistics', id=','.join(c_ids)).execute()['items']}
 
-                anomalias = []
+                encontrados = 0
                 for v in v_data:
-                    # REQUISITO: EVITAR MÚSICA (ID 10)
-                    if v['snippet'].get('categoryId') == '10':
-                        continue
-                    
-                    # REQUISITO: EVITAR LIVES
-                    if v['snippet'].get('liveBroadcastContent') != 'none':
+                    # Filtros básicos obligatorios (No música, No lives)
+                    if v['snippet'].get('categoryId') == '10' or v['snippet'].get('liveBroadcastContent') != 'none':
                         continue
 
                     vistas = int(v['statistics'].get('viewCount', 0))
@@ -95,31 +79,22 @@ if st.button("📡 INICIAR BÚSQUEDA DE ALTO RENDIMIENTO"):
                         subs = int(c['statistics'].get('subscriberCount', 1))
                         ratio = vistas / subs
                         
-                        # REQUISITO: FILTROS DE PODER, SUBS Y VISTAS
-                        if ratio >= ratio_min and subs <= max_subs and vistas >= min_views:
-                            anomalias.append({
-                                "Thumb": v['snippet']['thumbnails']['high']['url'],
-                                "Título": v['snippet']['title'],
-                                "Canal": v['snippet']['channelTitle'],
-                                "Publicado": v['snippet']['publishedAt'][:10],
-                                "Ratio": f"{round(ratio, 1)}x",
-                                "Vistas": vistas,
-                                "Link": f"https://youtube.com/watch?v={v['id']}"
-                            })
+                        # PRIORIDAD: Que tenga muchas vistas, el ratio es secundario
+                        if vistas >= min_views_req and subs <= max_subs_req:
+                            encontrados += 1
+                            col1, col2 = st.columns([1, 2])
+                            with col1:
+                                st.image(v['snippet']['thumbnails']['high']['url'], use_container_width=True)
+                            with col2:
+                                st.subheader(v['snippet']['title'])
+                                st.write(f"👁️ **VISTAS:** {vistas:,}")
+                                st.write(f"📅 Publicado: {v['snippet']['publishedAt'][:10]} | 📈 Ratio: {round(ratio, 1)}x")
+                                st.write(f"📺 Canal: {v['snippet']['channelTitle']} ({subs:,} subs)")
+                                st.link_button("🎥 Analizar este éxito", f"https://youtube.com/watch?v={v['id']}")
+                            st.divider()
 
-                if anomalias:
-                    st.success(f"🎯 ¡Radar Limpio! {len(anomalias)} oportunidades detectadas.")
-                    for item in anomalias:
-                        col1, col2 = st.columns([1, 2])
-                        with col1:
-                            st.image(item['Thumb'], use_container_width=True)
-                        with col2:
-                            st.subheader(item['Título'])
-                            st.write(f"📅 **Publicado:** {item['Publicado']} | 📈 **Ratio:** {item['Ratio']}")
-                            st.write(f"👀 **Vistas:** {item['Vistas']:,} | 📺 **Canal:** {item['Canal']}")
-                            st.link_button("🎥 Ver Estrategia", item['Link'])
-                        st.divider()
-                else:
-                    st.warning("No hay videos que superen los filtros de calidad en este momento.")
+                if encontrados == 0:
+                    st.info("No hay videos que cumplan los filtros. He bajado la exigencia, prueba pulsar el botón de nuevo.")
+
         except Exception as e:
-            st.error(f"Error técnico: {e}")
+            st.error(f"Error: {e}")
