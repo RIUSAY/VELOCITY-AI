@@ -3,40 +3,40 @@ import pandas as pd
 from googleapiclient.discovery import build
 from datetime import datetime, timedelta
 
-# Configuración de Identidad
+# 1. Configuración de Identidad
 st.set_page_config(page_title="VELOCITY AI - GLOBAL HUNTER", layout="wide")
 st.title("🚀 VELOCITY AI: Global Faceless Intelligence")
 
-# Seguridad de API Key
+# 2. Seguridad de API Key (Secrets)
 try:
     api_key_default = st.secrets["YOUTUBE_API_KEY"]
 except:
     api_key_default = ""
 
-# --- BARRA LATERAL: FILTROS DE ÉLITE ---
+# --- BARRA LATERAL: FILTROS SOLICITADOS ---
 with st.sidebar:
     st.header("⚙️ Ajustes de Cacería")
     api_key = st.text_input("API KEY", value=api_key_default, type="password")
     
     st.divider()
     
-    # Selector de Idioma (Mercado)
+    # Filtro de Idioma
     idioma = st.selectbox("🌎 Idioma del Video", ["Inglés (en)", "Español (es)"], index=0)
     lang_code = "en" if "Inglés" in idioma else "es"
     
-    # Selector de Tiempo (Rango de Publicación solicitado)
+    # Filtro de Fechas (Rango solicitado)
     rango_tiempo = st.selectbox(
         "📅 Antigüedad del Video", 
         ["1 año", "8 meses", "6 meses", "3 meses", "1 mes", "1 semana", "24 horas"],
         index=3
     )
     
-    # Filtros de Métricas
+    # Filtros de Rendimiento
     ratio_min = st.slider("🔥 Poder Viral Mínimo (Ratio)", 5, 100, 10)
     max_subs = st.number_input("📉 Máximo de Suscriptores", value=250000)
     min_views = st.number_input("👁️ Mínimo de Vistas", value=50000)
 
-# --- FUNCIÓN PARA CALCULAR LA FECHA ---
+# --- LÓGICA DE FECHA ---
 def calcular_fecha_publicacion(opcion):
     ahora = datetime.utcnow()
     tiempos = {
@@ -55,7 +55,7 @@ if st.button("📡 INICIAR BÚSQUEDA DE ALTO RENDIMIENTO"):
             youtube = build('youtube', 'v3', developerKey=api_key)
             fecha_filtro = calcular_fecha_publicacion(rango_tiempo)
             
-            # Buscamos videos con filtros específicos
+            # Buscamos videos (Filtro inicial: Idioma y Fecha)
             res = youtube.search().list(
                 part='snippet',
                 maxResults=50,
@@ -64,16 +64,15 @@ if st.button("📡 INICIAR BÚSQUEDA DE ALTO RENDIMIENTO"):
                 relevanceLanguage=lang_code,
                 publishedAfter=fecha_filtro,
                 videoEmbeddable='true',
-                videoDefinition='high',
-                eventType='completed' if rango_tiempo != "24 horas" else 'none'
+                videoDefinition='high'
             ).execute()
 
-            v_ids = [i['id']['videoId'] for i in res['items']]
+            v_ids = [i['id']['videoId'] for i in res['items'] if 'videoId' in i['id']]
             
             if not v_ids:
-                st.warning("No se encontraron videos iniciales. Prueba con otro rango de tiempo.")
+                st.warning("No se encontraron videos en este rango. Prueba ampliar los filtros.")
             else:
-                # Obtener datos extendidos
+                # Obtener estadísticas extendidas
                 v_data = youtube.videos().list(part='statistics,snippet', id=','.join(v_ids)).execute()['items']
                 c_ids = [v['snippet']['channelId'] for v in v_data]
                 c_data = youtube.channels().list(part='statistics', id=','.join(c_ids)).execute()['items']
@@ -81,12 +80,46 @@ if st.button("📡 INICIAR BÚSQUEDA DE ALTO RENDIMIENTO"):
 
                 anomalias = []
                 for v in v_data:
-                    # 1. EVITAR MÚSICA (Categoría 10)
+                    # REQUISITO: EVITAR MÚSICA (ID 10)
                     if v['snippet'].get('categoryId') == '10':
                         continue
                     
-                    # 2. EVITAR LIVES (Solo contenido grabado)
+                    # REQUISITO: EVITAR LIVES
                     if v['snippet'].get('liveBroadcastContent') != 'none':
                         continue
 
-                    v
+                    vistas = int(v['statistics'].get('viewCount', 0))
+                    c = c_stats.get(v['snippet']['channelId'])
+                    
+                    if c:
+                        subs = int(c['statistics'].get('subscriberCount', 1))
+                        ratio = vistas / subs
+                        
+                        # REQUISITO: FILTROS DE PODER, SUBS Y VISTAS
+                        if ratio >= ratio_min and subs <= max_subs and vistas >= min_views:
+                            anomalias.append({
+                                "Thumb": v['snippet']['thumbnails']['high']['url'],
+                                "Título": v['snippet']['title'],
+                                "Canal": v['snippet']['channelTitle'],
+                                "Publicado": v['snippet']['publishedAt'][:10],
+                                "Ratio": f"{round(ratio, 1)}x",
+                                "Vistas": vistas,
+                                "Link": f"https://youtube.com/watch?v={v['id']}"
+                            })
+
+                if anomalias:
+                    st.success(f"🎯 ¡Radar Limpio! {len(anomalias)} oportunidades detectadas.")
+                    for item in anomalias:
+                        col1, col2 = st.columns([1, 2])
+                        with col1:
+                            st.image(item['Thumb'], use_container_width=True)
+                        with col2:
+                            st.subheader(item['Título'])
+                            st.write(f"📅 **Publicado:** {item['Publicado']} | 📈 **Ratio:** {item['Ratio']}")
+                            st.write(f"👀 **Vistas:** {item['Vistas']:,} | 📺 **Canal:** {item['Canal']}")
+                            st.link_button("🎥 Ver Estrategia", item['Link'])
+                        st.divider()
+                else:
+                    st.warning("No hay videos que superen los filtros de calidad en este momento.")
+        except Exception as e:
+            st.error(f"Error técnico: {e}")
